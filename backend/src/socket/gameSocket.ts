@@ -2,28 +2,68 @@ import type { Server, Socket } from 'socket.io';
 import { roomService } from '../services/roomService.js';
 import { GameEngine } from '../utils/gameEngine.js';
 
-interface IdentityPayload { playerId: string; nickname: string; avatar: string }
-interface RoomPayload extends IdentityPayload { code: string }
+interface IdentityPayload {
+  playerId: string;
+  nickname: string;
+  avatar: string;
+}
+interface RoomPayload extends IdentityPayload {
+  code: string;
+  reconnectToken?: string;
+}
+type Ack = (response: {
+  ok: boolean;
+  room?: ReturnType<typeof roomService.publicRoom>;
+  reconnectToken?: string;
+  error?: string;
+}) => void;
+
+function reply(callback: unknown, response: Parameters<Ack>[0]): void {
+  if (typeof callback === 'function') (callback as Ack)(response);
+}
 
 export function registerGameSocket(io: Server, socket: Socket) {
   socket.on('create-room', (payload: IdentityPayload, callback) => {
     try {
-      const room = roomService.createRoom({ id: payload.playerId, socketId: socket.id, nickname: payload.nickname, avatar: payload.avatar });
+      const room = roomService.createRoom({
+        id: payload.playerId,
+        socketId: socket.id,
+        nickname: payload.nickname,
+        avatar: payload.avatar,
+      });
       socket.join(room.code);
-      callback({ ok: true, room: roomService.publicRoom(room) });
+      reply(callback, {
+        ok: true,
+        room: roomService.publicRoom(room),
+        reconnectToken: room.players[0].reconnectToken,
+      });
     } catch (error) {
-      callback({ ok: false, error: (error as Error).message });
+      reply(callback, { ok: false, error: (error as Error).message });
     }
   });
 
   socket.on('join-room', (payload: RoomPayload, callback) => {
     try {
-      const room = roomService.joinRoom(payload.code, { id: payload.playerId, socketId: socket.id, nickname: payload.nickname, avatar: payload.avatar });
+      const room = roomService.joinRoom(
+        payload.code,
+        {
+          id: payload.playerId,
+          socketId: socket.id,
+          nickname: payload.nickname,
+          avatar: payload.avatar,
+        },
+        payload.reconnectToken,
+      );
       socket.join(room.code);
       io.to(room.code).emit('player-joined', roomService.publicRoom(room));
-      callback({ ok: true, room: roomService.publicRoom(room) });
+      const player = room.players.find((candidate) => candidate.socketId === socket.id)!;
+      reply(callback, {
+        ok: true,
+        room: roomService.publicRoom(room),
+        reconnectToken: player.reconnectToken,
+      });
     } catch (error) {
-      callback({ ok: false, error: (error as Error).message });
+      reply(callback, { ok: false, error: (error as Error).message });
     }
   });
 
@@ -31,7 +71,9 @@ export function registerGameSocket(io: Server, socket: Socket) {
     try {
       const room = roomService.get(code);
       if (!room) throw new Error('Room not found');
-      const player = room.players.find((p) => p.id === playerId);
+      const player = room.players.find(
+        (p) => p.id === playerId && p.socketId === socket.id && p.connected,
+      );
       if (!player) throw new Error('Player not found');
       if (room.status !== 'playing') throw new Error('Game is not active');
       if (room.turn !== player.mark) throw new Error('It is not your turn');
@@ -55,9 +97,9 @@ export function registerGameSocket(io: Server, socket: Socket) {
         io.to(room.code).emit('board-update', roomService.publicRoom(room));
         io.to(room.code).emit('turn-change', room.turn);
       }
-      callback({ ok: true });
+      reply(callback, { ok: true });
     } catch (error) {
-      callback({ ok: false, error: (error as Error).message });
+      reply(callback, { ok: false, error: (error as Error).message });
     }
   });
 
@@ -65,7 +107,11 @@ export function registerGameSocket(io: Server, socket: Socket) {
     try {
       const room = roomService.get(code);
       if (!room) throw new Error('Room not found');
-      const player = room.players.find((p) => p.id === playerId);
+      if (room.status !== 'finished')
+        throw new Error('Rematches are only available after the game');
+      const player = room.players.find(
+        (p) => p.id === playerId && p.socketId === socket.id && p.connected,
+      );
       if (!player) throw new Error('Player not found');
       player.rematchRequested = true;
       io.to(code).emit('rematch-requested', roomService.publicRoom(room));
@@ -78,17 +124,19 @@ export function registerGameSocket(io: Server, socket: Socket) {
         room.players.forEach((p) => (p.rematchRequested = false));
         io.to(code).emit('accept-rematch', roomService.publicRoom(room));
       }
-      callback({ ok: true });
+      reply(callback, { ok: true });
     } catch (error) {
-      callback({ ok: false, error: (error as Error).message });
+      reply(callback, { ok: false, error: (error as Error).message });
     }
   });
 
   socket.on('leave-room', ({ code, playerId }) => {
     const room = roomService.get(code);
     if (!room) return;
-    const player = room.players.find((p) => p.id === playerId);
-    if (player) player.connected = false;
+    const player = room.players.find((p) => p.id === playerId && p.socketId === socket.id);
+    if (!player) return;
+    player.connected = false;
+    player.rematchRequested = false;
     socket.leave(code);
     io.to(code).emit('player-left', roomService.publicRoom(room));
     setTimeout(() => roomService.deleteIfAbandoned(code), 30_000);
