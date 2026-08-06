@@ -5,7 +5,9 @@ import { GameEngine } from '../utils/gameEngine.js';
 export class RoomService {
   private rooms = new Map<string, Room>();
 
-  createRoom(player: Omit<Player, 'mark' | 'connected' | 'rematchRequested'>): Room {
+  createRoom(
+    player: Omit<Player, 'mark' | 'connected' | 'rematchRequested' | 'reconnectToken'>,
+  ): Room {
     const code = this.generateCode();
     const room: Room = {
       code,
@@ -14,7 +16,15 @@ export class RoomService {
       status: 'waiting',
       winner: null,
       winningLine: [],
-      players: [{ ...player, mark: 'X', connected: true, rematchRequested: false }],
+      players: [
+        {
+          ...player,
+          reconnectToken: this.generateToken(),
+          mark: 'X',
+          connected: true,
+          rematchRequested: false,
+        },
+      ],
       scores: { X: 0, O: 0, draws: 0 },
       createdAt: Date.now(),
     };
@@ -26,11 +36,17 @@ export class RoomService {
     return this.rooms.get(code.toUpperCase());
   }
 
-  joinRoom(code: string, player: Omit<Player, 'mark' | 'connected' | 'rematchRequested'>): Room {
+  joinRoom(
+    code: string,
+    player: Omit<Player, 'mark' | 'connected' | 'rematchRequested' | 'reconnectToken'>,
+    reconnectToken?: string,
+  ): Room {
     const room = this.get(code);
     if (!room) throw new Error('Room not found');
     const returning = room.players.find((p) => p.id === player.id);
     if (returning) {
+      if (!reconnectToken || reconnectToken !== returning.reconnectToken)
+        throw new Error('Invalid reconnect credentials');
       returning.socketId = player.socketId;
       returning.connected = true;
       returning.nickname = player.nickname;
@@ -38,7 +54,13 @@ export class RoomService {
       return room;
     }
     if (room.players.length >= 2) throw new Error('Room is full');
-    room.players.push({ ...player, mark: 'O', connected: true, rematchRequested: false });
+    room.players.push({
+      ...player,
+      reconnectToken: this.generateToken(),
+      mark: 'O',
+      connected: true,
+      rematchRequested: false,
+    });
     room.status = 'playing';
     return room;
   }
@@ -48,6 +70,7 @@ export class RoomService {
       const player = room.players.find((p) => p.socketId === socketId);
       if (player) {
         player.connected = false;
+        player.rematchRequested = false;
         return room;
       }
     }
@@ -84,6 +107,10 @@ export class RoomService {
     do code = crypto.randomBytes(3).toString('hex').slice(0, 6).toUpperCase();
     while (this.rooms.has(code));
     return code;
+  }
+
+  private generateToken(): string {
+    return crypto.randomBytes(32).toString('base64url');
   }
 }
 

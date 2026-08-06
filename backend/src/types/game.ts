@@ -5,6 +5,7 @@ export type GameStatus = 'waiting' | 'playing' | 'finished';
 export interface Player {
   id: string;
   socketId: string;
+  reconnectToken: string;
   nickname: string;
   avatar: string;
   mark: Mark;
@@ -31,6 +32,8 @@ export interface PublicRoom {
   status: GameStatus;
   winner: Mark | 'draw' | null;
   winningLine: number[];
-  players: Array<Pick<Player, 'id' | 'nickname' | 'avatar' | 'mark' | 'connected' | 'rematchRequested'>>;
+  players: Array<
+    Pick<Player, 'id' | 'nickname' | 'avatar' | 'mark' | 'connected' | 'rematchRequested'>
+  >;
   scores: Room['scores'];
 }
