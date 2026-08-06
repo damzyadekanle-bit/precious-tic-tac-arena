@@ -50,4 +50,7 @@ export const ticTacToe: GameAdapter = {
   getResult(state: GameState): GameResult {
     return { winner: requireState(state).winner };
   },
+  toPublicState(state: GameState) {
+    return requireState(state);
+  },
 };

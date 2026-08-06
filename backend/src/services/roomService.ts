@@ -81,7 +81,7 @@ export class RoomService {
     return {
       code: room.code,
       gameType: room.gameType,
-      game: room.game,
+      game: getGame(room.gameType).toPublicState(room.game),
       status: room.status,
       players: room.players.map(({ id, nickname, avatar, seat, connected, rematchRequested }) => ({
         id,

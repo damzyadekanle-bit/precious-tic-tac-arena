@@ -7,7 +7,7 @@ test('room creation defaults to Tic-Tac-Toe for older clients', () => {
   const room = rooms.createRoom({
     id: 'player',
     socketId: 'socket',
-    nickname: 'Precious',
+    nickname: 'Damola',
     avatar: '🎮',
   });
   assert.equal(room.gameType, 'tic-tac-toe');

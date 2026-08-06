@@ -1,5 +1,5 @@
 {
-  "name": "precious-damolas-game-room",
+  "name": "damolas-game-room",
   "private": true,
   "workspaces": [
     "frontend",

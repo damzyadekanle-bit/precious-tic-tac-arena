@@ -1,11 +1,12 @@
-# Precious & Damola's Game Room
+# Damola's Game Room
 
-A real-time multiplayer game room built with React, TypeScript, Vite, Tailwind CSS, Framer Motion, Express, and Socket.IO. Tic-Tac-Toe is the first available game, with a registry-based architecture ready for more.
+A real-time multiplayer game room built with React, TypeScript, Vite, Tailwind CSS, Framer Motion, Express, and Socket.IO. Play Tic-Tac-Toe or Memory Match with a friend.
 
 ## Features
 
 - Real-time two-player rooms
 - Game catalog and server-side game adapter registry
+- Tic-Tac-Toe and Memory Match
 - Discriminated game state and generic game actions
 - Shareable six-character room codes
 - Strict server-side move validation

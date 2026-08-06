@@ -26,11 +26,11 @@ export function HomePage() {
       <header className="flex items-center justify-between">
         <div className="flex items-center gap-3">
           <span className="grid h-11 w-11 place-items-center rounded-2xl bg-gradient-to-br from-amber-300 to-orange-500 text-xl text-zinc-950">
-            P&D
+            D
           </span>
           <div>
-            <strong className="block">Precious & Damola's</strong>
-            <span className="text-sm text-zinc-500">Game Room</span>
+            <strong className="block">Damola's Game Room</strong>
+            <span className="text-sm text-zinc-500">Play together</span>
           </div>
         </div>
         <span className="hidden items-center gap-2 rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm text-zinc-300 sm:flex">

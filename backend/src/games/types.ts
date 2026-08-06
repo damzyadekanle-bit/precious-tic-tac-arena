@@ -1,4 +1,4 @@
-import type { GameAction, GameState, GameType, Seat } from '../types/game.js';
+import type { GameAction, GameState, GameType, PublicGameState, Seat } from '../types/game.js';
 
 export interface GameResult {
   winner: Seat | 'draw' | null;
@@ -9,4 +9,5 @@ export interface GameAdapter {
   createInitialState(startingSeat?: Seat): GameState;
   applyAction(state: GameState, seat: Seat, action: GameAction): GameState;
   getResult(state: GameState): GameResult;
+  toPublicState(state: GameState): PublicGameState;
 }

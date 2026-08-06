@@ -59,7 +59,7 @@ export function GamePage() {
   };
   const share = async () => {
     const data = {
-      title: `Join ${gameCatalog[room.gameType].name} in Precious & Damola's Game Room`,
+      title: `Join ${gameCatalog[room.gameType].name} in Damola's Game Room`,
       text: `Room code: ${room.code}`,
       url: window.location.href,
     };
@@ -107,9 +107,13 @@ export function GamePage() {
       </header>
       <div className="grid gap-8 lg:grid-cols-[280px_1fr_280px] lg:items-start">
         <aside className="space-y-4">
-          <PlayerCard player={me} active={Boolean(myTurn)} />
-          <PlayerCard player={opponent} active={Boolean(!myTurn && room.status === 'playing')} />
-          <Scoreboard scores={room.scores} />
+          <PlayerCard player={me} active={Boolean(myTurn)} gameType={room.gameType} />
+          <PlayerCard
+            player={opponent}
+            active={Boolean(!myTurn && room.status === 'playing')}
+            gameType={room.gameType}
+          />
+          <Scoreboard scores={room.scores} gameType={room.gameType} />
         </aside>
         <section className="flex flex-col items-center">
           <div className="mb-5 rounded-full border border-white/10 bg-white/5 px-4 py-2 font-semibold">
@@ -120,7 +124,11 @@ export function GamePage() {
             disabled={!myTurn || !connected || room.status !== 'playing'}
             onMove={(index) => {
               play('move');
-              performAction({ type: 'place', index });
+              performAction(
+                room.game.type === 'memory-match'
+                  ? { type: 'flip', index }
+                  : { type: 'place', index },
+              );
             }}
           />
         </section>
@@ -132,12 +140,30 @@ export function GamePage() {
               <dd>{connected ? 'Online' : 'Offline'}</dd>
             </div>
             <div className="flex justify-between">
-              <dt className="text-zinc-500">Your mark</dt>
-              <dd>{me ? (me.seat === 0 ? 'X' : 'O') : '—'}</dd>
+              <dt className="text-zinc-500">
+                {room.game.type === 'memory-match' ? 'Your pairs' : 'Your mark'}
+              </dt>
+              <dd>
+                {room.game.type === 'memory-match'
+                  ? me
+                    ? room.game.pairScores[me.seat]
+                    : '—'
+                  : me
+                    ? me.seat === 0
+                      ? 'X'
+                      : 'O'
+                    : '—'}
+              </dd>
             </div>
             <div className="flex justify-between">
               <dt className="text-zinc-500">Current turn</dt>
-              <dd>{room.game.turn === 0 ? 'X' : 'O'}</dd>
+              <dd>
+                {room.game.type === 'memory-match'
+                  ? (room.players.find((player) => player.seat === room.game.turn)?.nickname ?? '—')
+                  : room.game.turn === 0
+                    ? 'X'
+                    : 'O'}
+              </dd>
             </div>
           </dl>
           <button
