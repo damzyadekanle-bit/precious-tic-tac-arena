@@ -1,31 +1,31 @@
 import crypto from 'node:crypto';
 import type { Player, PublicRoom, Room } from '../types/game.js';
-import { GameEngine } from '../utils/gameEngine.js';
+import type { GameType } from '../types/game.js';
+import { getGame } from '../games/registry.js';
 
 export class RoomService {
   private rooms = new Map<string, Room>();
 
   createRoom(
-    player: Omit<Player, 'mark' | 'connected' | 'rematchRequested' | 'reconnectToken'>,
+    player: Omit<Player, 'seat' | 'connected' | 'rematchRequested' | 'reconnectToken'>,
+    gameType: GameType,
   ): Room {
     const code = this.generateCode();
     const room: Room = {
       code,
-      board: GameEngine.resetBoard(),
-      turn: 'X',
+      gameType,
+      game: getGame(gameType).createInitialState(),
       status: 'waiting',
-      winner: null,
-      winningLine: [],
       players: [
         {
           ...player,
           reconnectToken: this.generateToken(),
-          mark: 'X',
+          seat: 0,
           connected: true,
           rematchRequested: false,
         },
       ],
-      scores: { X: 0, O: 0, draws: 0 },
+      scores: { wins: [0, 0], draws: 0 },
       createdAt: Date.now(),
     };
     this.rooms.set(code, room);
@@ -38,7 +38,7 @@ export class RoomService {
 
   joinRoom(
     code: string,
-    player: Omit<Player, 'mark' | 'connected' | 'rematchRequested' | 'reconnectToken'>,
+    player: Omit<Player, 'seat' | 'connected' | 'rematchRequested' | 'reconnectToken'>,
     reconnectToken?: string,
   ): Room {
     const room = this.get(code);
@@ -57,7 +57,7 @@ export class RoomService {
     room.players.push({
       ...player,
       reconnectToken: this.generateToken(),
-      mark: 'O',
+      seat: 1,
       connected: true,
       rematchRequested: false,
     });
@@ -80,16 +80,14 @@ export class RoomService {
   publicRoom(room: Room): PublicRoom {
     return {
       code: room.code,
-      board: room.board,
-      turn: room.turn,
+      gameType: room.gameType,
+      game: room.game,
       status: room.status,
-      winner: room.winner,
-      winningLine: room.winningLine,
-      players: room.players.map(({ id, nickname, avatar, mark, connected, rematchRequested }) => ({
+      players: room.players.map(({ id, nickname, avatar, seat, connected, rematchRequested }) => ({
         id,
         nickname,
         avatar,
-        mark,
+        seat,
         connected,
         rematchRequested,
       })),

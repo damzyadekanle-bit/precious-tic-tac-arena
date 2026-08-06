@@ -1,11 +1,15 @@
 import type { Server, Socket } from 'socket.io';
 import { roomService } from '../services/roomService.js';
-import { GameEngine } from '../utils/gameEngine.js';
+import { getGame } from '../games/registry.js';
+import type { GameAction, GameType } from '../types/game.js';
 
 interface IdentityPayload {
   playerId: string;
   nickname: string;
   avatar: string;
+}
+interface CreateRoomPayload extends IdentityPayload {
+  gameType: GameType;
 }
 interface RoomPayload extends IdentityPayload {
   code: string;
@@ -23,14 +27,17 @@ function reply(callback: unknown, response: Parameters<Ack>[0]): void {
 }
 
 export function registerGameSocket(io: Server, socket: Socket) {
-  socket.on('create-room', (payload: IdentityPayload, callback) => {
+  socket.on('create-room', (payload: CreateRoomPayload, callback) => {
     try {
-      const room = roomService.createRoom({
-        id: payload.playerId,
-        socketId: socket.id,
-        nickname: payload.nickname,
-        avatar: payload.avatar,
-      });
+      const room = roomService.createRoom(
+        {
+          id: payload.playerId,
+          socketId: socket.id,
+          nickname: payload.nickname,
+          avatar: payload.avatar,
+        },
+        payload.gameType,
+      );
       socket.join(room.code);
       reply(callback, {
         ok: true,
@@ -67,35 +74,23 @@ export function registerGameSocket(io: Server, socket: Socket) {
     }
   });
 
-  socket.on('make-move', ({ code, playerId, index }, callback) => {
+  socket.on('game-action', ({ code, action }: { code: string; action: GameAction }, callback) => {
     try {
       const room = roomService.get(code);
       if (!room) throw new Error('Room not found');
-      const player = room.players.find(
-        (p) => p.id === playerId && p.socketId === socket.id && p.connected,
-      );
+      const player = room.players.find((p) => p.socketId === socket.id && p.connected);
       if (!player) throw new Error('Player not found');
       if (room.status !== 'playing') throw new Error('Game is not active');
-      if (room.turn !== player.mark) throw new Error('It is not your turn');
-      if (!GameEngine.validateMove(room.board, index)) throw new Error('Illegal move');
-
-      room.board[index] = player.mark;
-      const result = GameEngine.checkWinner(room.board);
-      if (result.winner) {
+      const adapter = getGame(room.gameType);
+      room.game = adapter.applyAction(room.game, player.seat, action);
+      const result = adapter.getResult(room.game);
+      if (result.winner !== null) {
         room.status = 'finished';
-        room.winner = result.winner;
-        room.winningLine = result.line;
-        room.scores[result.winner] += 1;
-        io.to(room.code).emit('game-over', roomService.publicRoom(room));
-      } else if (GameEngine.isDraw(room.board)) {
-        room.status = 'finished';
-        room.winner = 'draw';
-        room.scores.draws += 1;
+        if (result.winner === 'draw') room.scores.draws += 1;
+        else room.scores.wins[result.winner] += 1;
         io.to(room.code).emit('game-over', roomService.publicRoom(room));
       } else {
-        room.turn = GameEngine.nextTurn(room.turn);
-        io.to(room.code).emit('board-update', roomService.publicRoom(room));
-        io.to(room.code).emit('turn-change', room.turn);
+        io.to(room.code).emit('game-update', roomService.publicRoom(room));
       }
       reply(callback, { ok: true });
     } catch (error) {
@@ -103,24 +98,20 @@ export function registerGameSocket(io: Server, socket: Socket) {
     }
   });
 
-  socket.on('request-rematch', ({ code, playerId }, callback) => {
+  socket.on('request-rematch', ({ code }, callback) => {
     try {
       const room = roomService.get(code);
       if (!room) throw new Error('Room not found');
       if (room.status !== 'finished')
         throw new Error('Rematches are only available after the game');
-      const player = room.players.find(
-        (p) => p.id === playerId && p.socketId === socket.id && p.connected,
-      );
+      const player = room.players.find((p) => p.socketId === socket.id && p.connected);
       if (!player) throw new Error('Player not found');
       player.rematchRequested = true;
       io.to(code).emit('rematch-requested', roomService.publicRoom(room));
       if (room.players.length === 2 && room.players.every((p) => p.rematchRequested)) {
-        room.board = GameEngine.resetBoard();
-        room.turn = (room.scores.X + room.scores.O + room.scores.draws) % 2 === 0 ? 'X' : 'O';
+        const rounds = room.scores.wins[0] + room.scores.wins[1] + room.scores.draws;
+        room.game = getGame(room.gameType).createInitialState(rounds % 2 === 0 ? 0 : 1);
         room.status = 'playing';
-        room.winner = null;
-        room.winningLine = [];
         room.players.forEach((p) => (p.rematchRequested = false));
         io.to(code).emit('accept-rematch', roomService.publicRoom(room));
       }
@@ -130,10 +121,10 @@ export function registerGameSocket(io: Server, socket: Socket) {
     }
   });
 
-  socket.on('leave-room', ({ code, playerId }) => {
+  socket.on('leave-room', ({ code }) => {
     const room = roomService.get(code);
     if (!room) return;
-    const player = room.players.find((p) => p.id === playerId && p.socketId === socket.id);
+    const player = room.players.find((p) => p.socketId === socket.id);
     if (!player) return;
     player.connected = false;
     player.rematchRequested = false;

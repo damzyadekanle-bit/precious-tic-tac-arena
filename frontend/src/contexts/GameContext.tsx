@@ -1,16 +1,16 @@
-import { createContext, useContext, useEffect, useMemo, useState } from 'react';
+import { createContext, useContext, useEffect, useState } from 'react';
 import toast from 'react-hot-toast';
 import { socket } from '../services/socket';
-import type { PublicRoom } from '../types/game';
+import type { GameAction, GameType, PublicRoom } from '../types/game';
 import { getIdentity, updateNickname } from '../utils/identity';
 
 interface GameContextValue {
   room: PublicRoom | null;
   identity: ReturnType<typeof getIdentity>;
   connected: boolean;
-  createRoom: (nickname: string) => Promise<string>;
+  createRoom: (nickname: string, gameType: GameType) => Promise<string>;
   joinRoom: (code: string, nickname: string) => Promise<string>;
-  makeMove: (index: number) => void;
+  performAction: (action: GameAction) => void;
   requestRematch: () => void;
   leaveRoom: () => void;
 }
@@ -52,7 +52,7 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
     socket.on('disconnect', disconnect);
     socket.on('player-joined', update);
     socket.on('player-left', update);
-    socket.on('board-update', update);
+    socket.on('game-update', update);
     socket.on('game-over', update);
     socket.on('rematch-requested', update);
     socket.on('accept-rematch', update);
@@ -61,18 +61,18 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
       socket.off('disconnect', disconnect);
       socket.off('player-joined', update);
       socket.off('player-left', update);
-      socket.off('board-update', update);
+      socket.off('game-update', update);
       socket.off('game-over', update);
       socket.off('rematch-requested', update);
       socket.off('accept-rematch', update);
     };
   }, []);
 
-  const createRoom = async (nickname: string) =>
+  const createRoom = async (nickname: string, gameType: GameType) =>
     new Promise<string>((resolve, reject) => {
       const nextIdentity = updateNickname(nickname);
       setIdentity(nextIdentity);
-      socket.emit('create-room', nextIdentity, (res: RoomResponse) => {
+      socket.emit('create-room', { ...nextIdentity, gameType }, (res: RoomResponse) => {
         if (!res.ok || !res.room || !res.reconnectToken) {
           toast.error(res.error ?? 'Could not create room');
           reject(new Error(res.error));
@@ -109,43 +109,35 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
         },
       );
     });
-  const makeMove = (index: number) => {
+  const performAction = (action: GameAction) => {
     if (!room) return;
     socket.emit(
-      'make-move',
-      { code: room.code, playerId: identity.playerId, index },
+      'game-action',
+      { code: room.code, action },
       (res: { ok: boolean; error?: string }) => {
         if (!res.ok) toast.error(res.error ?? 'Move rejected');
       },
     );
   };
   const requestRematch = () => {
-    if (room)
-      socket.emit(
-        'request-rematch',
-        { code: room.code, playerId: identity.playerId },
-        () => undefined,
-      );
+    if (room) socket.emit('request-rematch', { code: room.code }, () => undefined);
   };
   const leaveRoom = () => {
-    if (room) socket.emit('leave-room', { code: room.code, playerId: identity.playerId });
+    if (room) socket.emit('leave-room', { code: room.code });
     setRoom(null);
     localStorage.removeItem('tta_room');
     localStorage.removeItem('tta_reconnect_token');
   };
-  const value = useMemo(
-    () => ({
-      room,
-      identity,
-      connected,
-      createRoom,
-      joinRoom,
-      makeMove,
-      requestRematch,
-      leaveRoom,
-    }),
-    [room, identity, connected],
-  );
+  const value = {
+    room,
+    identity,
+    connected,
+    createRoom,
+    joinRoom,
+    performAction,
+    requestRematch,
+    leaveRoom,
+  };
   return <GameContext.Provider value={value}>{children}</GameContext.Provider>;
 }
 interface RoomResponse {
@@ -154,6 +146,7 @@ interface RoomResponse {
   reconnectToken?: string;
   error?: string;
 }
+// eslint-disable-next-line react-refresh/only-export-components
 export function useGame() {
   const ctx = useContext(GameContext);
   if (!ctx) throw new Error('useGame must be inside GameProvider');
