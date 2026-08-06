@@ -1,12 +1,13 @@
 {
-  "name": "tic-tac-arena-backend",
+  "name": "damolas-game-room-backend",
   "version": "1.0.0",
   "type": "module",
   "scripts": {
     "dev": "tsx watch src/server.ts",
     "build": "tsc",
     "start": "node dist/server.js",
-    "lint": "eslint src --ext .ts"
+    "lint": "eslint src --ext .ts",
+    "test": "tsx --test test/**/*.test.ts"
   },
   "dependencies": {
     "cors": "^2.8.5",
