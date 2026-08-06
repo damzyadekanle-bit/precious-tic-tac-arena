@@ -9,7 +9,7 @@ interface IdentityPayload {
   avatar: string;
 }
 interface CreateRoomPayload extends IdentityPayload {
-  gameType: GameType;
+  gameType?: GameType;
 }
 interface RoomPayload extends IdentityPayload {
   code: string;
@@ -36,7 +36,7 @@ export function registerGameSocket(io: Server, socket: Socket) {
           nickname: payload.nickname,
           avatar: payload.avatar,
         },
-        payload.gameType,
+        payload.gameType ?? 'tic-tac-toe',
       );
       socket.join(room.code);
       reply(callback, {

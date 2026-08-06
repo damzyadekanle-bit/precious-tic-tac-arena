@@ -72,17 +72,28 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
     new Promise<string>((resolve, reject) => {
       const nextIdentity = updateNickname(nickname);
       setIdentity(nextIdentity);
-      socket.emit('create-room', { ...nextIdentity, gameType }, (res: RoomResponse) => {
-        if (!res.ok || !res.room || !res.reconnectToken) {
-          toast.error(res.error ?? 'Could not create room');
-          reject(new Error(res.error));
-          return;
-        }
-        setRoom(res.room);
-        localStorage.setItem('tta_room', res.room.code);
-        localStorage.setItem('tta_reconnect_token', res.reconnectToken);
-        resolve(res.room.code);
-      });
+      socket
+        .timeout(8_000)
+        .emit(
+          'create-room',
+          { ...nextIdentity, gameType },
+          (error: Error | null, res?: RoomResponse) => {
+            if (error || !res) {
+              toast.error('The game server did not respond. Please try again.');
+              reject(error ?? new Error('Game server did not respond'));
+              return;
+            }
+            if (!res.ok || !res.room || !res.reconnectToken) {
+              toast.error(res.error ?? 'Could not create room');
+              reject(new Error(res.error));
+              return;
+            }
+            setRoom(res.room);
+            localStorage.setItem('tta_room', res.room.code);
+            localStorage.setItem('tta_reconnect_token', res.reconnectToken);
+            resolve(res.room.code);
+          },
+        );
     });
   const joinRoom = async (code: string, nickname: string) =>
     new Promise<string>((resolve, reject) => {

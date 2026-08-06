@@ -8,7 +8,7 @@ export class RoomService {
 
   createRoom(
     player: Omit<Player, 'seat' | 'connected' | 'rematchRequested' | 'reconnectToken'>,
-    gameType: GameType,
+    gameType: GameType = 'tic-tac-toe',
   ): Room {
     const code = this.generateCode();
     const room: Room = {
