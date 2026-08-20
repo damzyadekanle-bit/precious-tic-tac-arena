@@ -1,36 +1,107 @@
-export type Mark = 'X' | 'O';
-export type Cell = Mark | null;
+export type GameType = 'tic-tac-toe' | 'memory-match' | 'i-call-on';
 export type GameStatus = 'waiting' | 'playing' | 'finished';
+export type Seat = number;
+export type ICallOnCategory = 'name' | 'animal' | 'food' | 'place' | 'thing';
+export type ICallOnAnswers = Record<ICallOnCategory, string>;
+export type ICallOnPhase =
+  'LOBBY' | 'ROUND_SETUP' | 'PLAYING' | 'REVIEWING' | 'ROUND_RESULTS' | 'GAME_OVER';
+
+export interface ICallOnState {
+  type: 'i-call-on';
+  phase: ICallOnPhase;
+  hostSeat: Seat;
+  callerSeat: Seat;
+  round: number;
+  letter: string | null;
+  usedLetters: string[];
+  durationSeconds: number;
+  endsAt: number | null;
+  winner: null;
+  answers: Record<number, ICallOnAnswers>;
+  reviewerFor: Record<number, Seat>;
+  decisions: Record<number, Partial<Record<ICallOnCategory, boolean>>>;
+  roundPoints: Record<number, Record<ICallOnCategory, number>>;
+  totals: number[];
+}
+
+export interface PublicICallOnState extends Omit<ICallOnState, 'answers' | 'decisions'> {
+  myAnswers: ICallOnAnswers;
+  reviewTarget: { seat: Seat; answers: ICallOnAnswers } | null;
+  myDecisions: Partial<Record<ICallOnCategory, boolean>>;
+}
+
+export interface TicTacToeState {
+  type: 'tic-tac-toe';
+  board: Array<'X' | 'O' | null>;
+  turn: Seat;
+  winner: Seat | 'draw' | null;
+  winningLine: number[];
+}
+
+export interface MemoryMatchState {
+  type: 'memory-match';
+  deck: string[];
+  revealed: number[];
+  matchedBy: Array<Seat | null>;
+  turn: Seat;
+  winner: Seat | 'draw' | null;
+  pairScores: [number, number];
+  pendingMismatch: boolean;
+}
+
+export interface PublicMemoryMatchState {
+  type: 'memory-match';
+  cards: Array<string | null>;
+  revealed: number[];
+  matchedBy: Array<Seat | null>;
+  turn: Seat;
+  winner: Seat | 'draw' | null;
+  pairScores: [number, number];
+}
+
+export type GameState = TicTacToeState | MemoryMatchState | ICallOnState;
+export type PublicGameState = TicTacToeState | PublicMemoryMatchState | PublicICallOnState;
+export type GameAction =
+  | { type: 'place'; index: number }
+  | { type: 'flip'; index: number }
+  | { type: 'start-game' }
+  | { type: 'start-round'; letter: string; durationSeconds: number }
+  | { type: 'update-answers'; answers: ICallOnAnswers }
+  | { type: 'hands-up' }
+  | { type: 'review'; category: ICallOnCategory; correct: boolean }
+  | { type: 'next-round' }
+  | { type: 'end-game' }
+  | { type: 'play-again' }
+  | { type: 'expire-round' };
 
 export interface Player {
   id: string;
   socketId: string;
+  reconnectToken: string;
   nickname: string;
   avatar: string;
-  mark: Mark;
+  seat: Seat;
   connected: boolean;
   rematchRequested: boolean;
 }
 
 export interface Room {
   code: string;
-  board: Cell[];
-  turn: Mark;
+  gameType: GameType;
+  game: GameState;
   status: GameStatus;
-  winner: Mark | 'draw' | null;
-  winningLine: number[];
   players: Player[];
-  scores: { X: number; O: number; draws: number };
+  scores: { wins: number[]; draws: number };
   createdAt: number;
 }
 
 export interface PublicRoom {
   code: string;
-  board: Cell[];
-  turn: Mark;
+  gameType: GameType;
+  game: PublicGameState;
   status: GameStatus;
-  winner: Mark | 'draw' | null;
-  winningLine: number[];
-  players: Array<Pick<Player, 'id' | 'nickname' | 'avatar' | 'mark' | 'connected' | 'rematchRequested'>>;
+  players: Array<
+    Pick<Player, 'id' | 'nickname' | 'avatar' | 'seat' | 'connected' | 'rematchRequested'>
+  >;
   scores: Room['scores'];
 }

@@ -1,21 +1,31 @@
 import crypto from 'node:crypto';
 import type { Player, PublicRoom, Room } from '../types/game.js';
-import { GameEngine } from '../utils/gameEngine.js';
+import type { GameType } from '../types/game.js';
+import { getGame } from '../games/registry.js';
 
 export class RoomService {
   private rooms = new Map<string, Room>();
 
-  createRoom(player: Omit<Player, 'mark' | 'connected' | 'rematchRequested'>): Room {
+  createRoom(
+    player: Omit<Player, 'seat' | 'connected' | 'rematchRequested' | 'reconnectToken'>,
+    gameType: GameType = 'tic-tac-toe',
+  ): Room {
     const code = this.generateCode();
     const room: Room = {
       code,
-      board: GameEngine.resetBoard(),
-      turn: 'X',
+      gameType,
+      game: getGame(gameType).createInitialState(),
       status: 'waiting',
-      winner: null,
-      winningLine: [],
-      players: [{ ...player, mark: 'X', connected: true, rematchRequested: false }],
-      scores: { X: 0, O: 0, draws: 0 },
+      players: [
+        {
+          ...player,
+          reconnectToken: this.generateToken(),
+          seat: 0,
+          connected: true,
+          rematchRequested: false,
+        },
+      ],
+      scores: { wins: Array(getGame(gameType).maxPlayers).fill(0), draws: 0 },
       createdAt: Date.now(),
     };
     this.rooms.set(code, room);
@@ -26,20 +36,35 @@ export class RoomService {
     return this.rooms.get(code.toUpperCase());
   }
 
-  joinRoom(code: string, player: Omit<Player, 'mark' | 'connected' | 'rematchRequested'>): Room {
+  joinRoom(
+    code: string,
+    player: Omit<Player, 'seat' | 'connected' | 'rematchRequested' | 'reconnectToken'>,
+    reconnectToken?: string,
+  ): Room {
     const room = this.get(code);
     if (!room) throw new Error('Room not found');
     const returning = room.players.find((p) => p.id === player.id);
     if (returning) {
+      if (!reconnectToken || reconnectToken !== returning.reconnectToken)
+        throw new Error('Invalid reconnect credentials');
       returning.socketId = player.socketId;
       returning.connected = true;
       returning.nickname = player.nickname;
       returning.avatar = player.avatar;
       return room;
     }
-    if (room.players.length >= 2) throw new Error('Room is full');
-    room.players.push({ ...player, mark: 'O', connected: true, rematchRequested: false });
-    room.status = 'playing';
+    if (room.game.type === 'i-call-on' && room.game.phase !== 'LOBBY')
+      throw new Error('This game has already started');
+    const adapter = getGame(room.gameType);
+    if (room.players.length >= adapter.maxPlayers) throw new Error('Room is full');
+    room.players.push({
+      ...player,
+      reconnectToken: this.generateToken(),
+      seat: room.players.length,
+      connected: true,
+      rematchRequested: false,
+    });
+    if (!adapter.managesLobby && room.players.length >= adapter.minPlayers) room.status = 'playing';
     return room;
   }
 
@@ -48,25 +73,24 @@ export class RoomService {
       const player = room.players.find((p) => p.socketId === socketId);
       if (player) {
         player.connected = false;
+        player.rematchRequested = false;
         return room;
       }
     }
     return undefined;
   }
 
-  publicRoom(room: Room): PublicRoom {
+  publicRoom(room: Room, viewerSeat?: number): PublicRoom {
     return {
       code: room.code,
-      board: room.board,
-      turn: room.turn,
+      gameType: room.gameType,
+      game: getGame(room.gameType).toPublicState(room.game, viewerSeat),
       status: room.status,
-      winner: room.winner,
-      winningLine: room.winningLine,
-      players: room.players.map(({ id, nickname, avatar, mark, connected, rematchRequested }) => ({
+      players: room.players.map(({ id, nickname, avatar, seat, connected, rematchRequested }) => ({
         id,
         nickname,
         avatar,
-        mark,
+        seat,
         connected,
         rematchRequested,
       })),
@@ -84,6 +108,10 @@ export class RoomService {
     do code = crypto.randomBytes(3).toString('hex').slice(0, 6).toUpperCase();
     while (this.rooms.has(code));
     return code;
+  }
+
+  private generateToken(): string {
+    return crypto.randomBytes(32).toString('base64url');
   }
 }
 

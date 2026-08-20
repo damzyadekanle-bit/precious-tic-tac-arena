@@ -1,103 +1,203 @@
 import type { Server, Socket } from 'socket.io';
 import { roomService } from '../services/roomService.js';
-import { GameEngine } from '../utils/gameEngine.js';
+import { getGame } from '../games/registry.js';
+import type { GameAction, GameType } from '../types/game.js';
 
-interface IdentityPayload { playerId: string; nickname: string; avatar: string }
-interface RoomPayload extends IdentityPayload { code: string }
+interface IdentityPayload {
+  playerId: string;
+  nickname: string;
+  avatar: string;
+}
+interface CreateRoomPayload extends IdentityPayload {
+  gameType?: GameType;
+}
+interface RoomPayload extends IdentityPayload {
+  code: string;
+  reconnectToken?: string;
+}
+type Ack = (response: {
+  ok: boolean;
+  room?: ReturnType<typeof roomService.publicRoom>;
+  reconnectToken?: string;
+  error?: string;
+}) => void;
+
+function reply(callback: unknown, response: Parameters<Ack>[0]): void {
+  if (typeof callback === 'function') (callback as Ack)(response);
+}
+
+function broadcastRoom(
+  io: Server,
+  room: NonNullable<ReturnType<typeof roomService.get>>,
+  event = 'game-update',
+) {
+  for (const player of room.players)
+    io.to(player.socketId).emit(event, roomService.publicRoom(room, player.seat));
+}
+
+function advanceDisconnectedCaller(room: NonNullable<ReturnType<typeof roomService.get>>) {
+  if (room.game.type !== 'i-call-on' || room.game.phase !== 'ROUND_SETUP') return;
+  const game = room.game;
+  const caller = room.players.find((player) => player.seat === game.callerSeat);
+  if (caller?.connected) return;
+  const active = room.players.filter((player) => player.connected);
+  if (active.length)
+    game.callerSeat =
+      active.find((player) => player.seat > game.callerSeat)?.seat ?? active[0].seat;
+}
 
 export function registerGameSocket(io: Server, socket: Socket) {
-  socket.on('create-room', (payload: IdentityPayload, callback) => {
+  socket.on('create-room', (payload: CreateRoomPayload, callback) => {
     try {
-      const room = roomService.createRoom({ id: payload.playerId, socketId: socket.id, nickname: payload.nickname, avatar: payload.avatar });
+      const room = roomService.createRoom(
+        {
+          id: payload.playerId,
+          socketId: socket.id,
+          nickname: payload.nickname,
+          avatar: payload.avatar,
+        },
+        payload.gameType ?? 'tic-tac-toe',
+      );
       socket.join(room.code);
-      callback({ ok: true, room: roomService.publicRoom(room) });
+      reply(callback, {
+        ok: true,
+        room: roomService.publicRoom(room, 0),
+        reconnectToken: room.players[0].reconnectToken,
+      });
     } catch (error) {
-      callback({ ok: false, error: (error as Error).message });
+      reply(callback, { ok: false, error: (error as Error).message });
     }
   });
 
   socket.on('join-room', (payload: RoomPayload, callback) => {
     try {
-      const room = roomService.joinRoom(payload.code, { id: payload.playerId, socketId: socket.id, nickname: payload.nickname, avatar: payload.avatar });
+      const room = roomService.joinRoom(
+        payload.code,
+        {
+          id: payload.playerId,
+          socketId: socket.id,
+          nickname: payload.nickname,
+          avatar: payload.avatar,
+        },
+        payload.reconnectToken,
+      );
       socket.join(room.code);
-      io.to(room.code).emit('player-joined', roomService.publicRoom(room));
-      callback({ ok: true, room: roomService.publicRoom(room) });
+      broadcastRoom(io, room, 'player-joined');
+      const player = room.players.find((candidate) => candidate.socketId === socket.id)!;
+      reply(callback, {
+        ok: true,
+        room: roomService.publicRoom(room, player.seat),
+        reconnectToken: player.reconnectToken,
+      });
     } catch (error) {
-      callback({ ok: false, error: (error as Error).message });
+      reply(callback, { ok: false, error: (error as Error).message });
     }
   });
 
-  socket.on('make-move', ({ code, playerId, index }, callback) => {
+  socket.on('game-action', ({ code, action }: { code: string; action: GameAction }, callback) => {
     try {
       const room = roomService.get(code);
       if (!room) throw new Error('Room not found');
-      const player = room.players.find((p) => p.id === playerId);
+      const player = room.players.find((p) => p.socketId === socket.id && p.connected);
       if (!player) throw new Error('Player not found');
-      if (room.status !== 'playing') throw new Error('Game is not active');
-      if (room.turn !== player.mark) throw new Error('It is not your turn');
-      if (!GameEngine.validateMove(room.board, index)) throw new Error('Illegal move');
-
-      room.board[index] = player.mark;
-      const result = GameEngine.checkWinner(room.board);
-      if (result.winner) {
+      if (room.status !== 'playing' && room.gameType !== 'i-call-on')
+        throw new Error('Game is not active');
+      const adapter = getGame(room.gameType);
+      if (
+        room.gameType === 'i-call-on' &&
+        action.type === 'start-game' &&
+        room.players.filter((candidate) => candidate.connected).length < 2
+      )
+        throw new Error('At least 2 connected players are required');
+      room.game = adapter.applyAction(room.game, player.seat, action, {
+        playerCount: room.players.length,
+        now: Date.now(),
+      });
+      if (room.gameType === 'i-call-on' && action.type === 'start-game') room.status = 'playing';
+      const result = adapter.getResult(room.game);
+      if (result.winner !== null) {
         room.status = 'finished';
-        room.winner = result.winner;
-        room.winningLine = result.line;
-        room.scores[result.winner] += 1;
-        io.to(room.code).emit('game-over', roomService.publicRoom(room));
-      } else if (GameEngine.isDraw(room.board)) {
-        room.status = 'finished';
-        room.winner = 'draw';
-        room.scores.draws += 1;
-        io.to(room.code).emit('game-over', roomService.publicRoom(room));
+        if (result.winner === 'draw') room.scores.draws += 1;
+        else room.scores.wins[result.winner] += 1;
+        broadcastRoom(io, room, 'game-over');
       } else {
-        room.turn = GameEngine.nextTurn(room.turn);
-        io.to(room.code).emit('board-update', roomService.publicRoom(room));
-        io.to(room.code).emit('turn-change', room.turn);
+        broadcastRoom(io, room);
       }
-      callback({ ok: true });
+      if (
+        room.gameType === 'i-call-on' &&
+        action.type === 'start-round' &&
+        room.game.type === 'i-call-on' &&
+        room.game.endsAt
+      ) {
+        const expectedEnd = room.game.endsAt;
+        setTimeout(
+          () => {
+            const current = roomService.get(room.code);
+            if (
+              !current ||
+              current.game.type !== 'i-call-on' ||
+              current.game.endsAt !== expectedEnd ||
+              current.game.phase !== 'PLAYING'
+            )
+              return;
+            current.game = adapter.applyAction(
+              current.game,
+              -1,
+              { type: 'expire-round' },
+              { playerCount: current.players.length, now: Date.now() },
+            );
+            broadcastRoom(io, current);
+          },
+          Math.max(0, expectedEnd - Date.now()),
+        );
+      }
+      reply(callback, { ok: true });
     } catch (error) {
-      callback({ ok: false, error: (error as Error).message });
+      reply(callback, { ok: false, error: (error as Error).message });
     }
   });
 
-  socket.on('request-rematch', ({ code, playerId }, callback) => {
+  socket.on('request-rematch', ({ code }, callback) => {
     try {
       const room = roomService.get(code);
       if (!room) throw new Error('Room not found');
-      const player = room.players.find((p) => p.id === playerId);
+      if (room.status !== 'finished')
+        throw new Error('Rematches are only available after the game');
+      const player = room.players.find((p) => p.socketId === socket.id && p.connected);
       if (!player) throw new Error('Player not found');
       player.rematchRequested = true;
-      io.to(code).emit('rematch-requested', roomService.publicRoom(room));
+      broadcastRoom(io, room, 'rematch-requested');
       if (room.players.length === 2 && room.players.every((p) => p.rematchRequested)) {
-        room.board = GameEngine.resetBoard();
-        room.turn = (room.scores.X + room.scores.O + room.scores.draws) % 2 === 0 ? 'X' : 'O';
+        const rounds = room.scores.wins[0] + room.scores.wins[1] + room.scores.draws;
+        room.game = getGame(room.gameType).createInitialState(rounds % 2 === 0 ? 0 : 1);
         room.status = 'playing';
-        room.winner = null;
-        room.winningLine = [];
         room.players.forEach((p) => (p.rematchRequested = false));
-        io.to(code).emit('accept-rematch', roomService.publicRoom(room));
+        broadcastRoom(io, room, 'accept-rematch');
       }
-      callback({ ok: true });
+      reply(callback, { ok: true });
     } catch (error) {
-      callback({ ok: false, error: (error as Error).message });
+      reply(callback, { ok: false, error: (error as Error).message });
     }
   });
 
-  socket.on('leave-room', ({ code, playerId }) => {
+  socket.on('leave-room', ({ code }) => {
     const room = roomService.get(code);
     if (!room) return;
-    const player = room.players.find((p) => p.id === playerId);
-    if (player) player.connected = false;
+    const player = room.players.find((p) => p.socketId === socket.id);
+    if (!player) return;
+    player.connected = false;
+    player.rematchRequested = false;
     socket.leave(code);
-    io.to(code).emit('player-left', roomService.publicRoom(room));
+    advanceDisconnectedCaller(room);
+    broadcastRoom(io, room, 'player-left');
     setTimeout(() => roomService.deleteIfAbandoned(code), 30_000);
   });
 
   socket.on('disconnect', () => {
     const room = roomService.removeSocket(socket.id);
     if (!room) return;
-    io.to(room.code).emit('player-left', roomService.publicRoom(room));
+    advanceDisconnectedCaller(room);
+    broadcastRoom(io, room, 'player-left');
     setTimeout(() => roomService.deleteIfAbandoned(room.code), 30_000);
   });
 }

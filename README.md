@@ -1,13 +1,16 @@
-# Tic Tac Arena
+# Damola's Game Room
 
-A polished online multiplayer Tic-Tac-Toe game built with React, TypeScript, Vite, Tailwind CSS, Framer Motion, Express, and Socket.IO.
+A real-time multiplayer game room built with React, TypeScript, Vite, Tailwind CSS, Framer Motion, Express, and Socket.IO. Play Tic-Tac-Toe, Memory Match, or the 2–12 player word game I Call On.
 
 ## Features
 
-- Real-time two-player rooms
+- Real-time multiplayer rooms for 2–12 players
+- Game catalog and server-side game adapter registry
+- Tic-Tac-Toe, Memory Match, and I Call On
+- Discriminated game state and generic game actions
 - Shareable six-character room codes
 - Strict server-side move validation
-- Session scoreboard and two-player rematches
+- Session scoreboards, round results, and rematches
 - Reconnection-friendly player identities
 - Responsive 320px–1440px UI
 - Motion, confetti, synthesized sound effects, mute control
