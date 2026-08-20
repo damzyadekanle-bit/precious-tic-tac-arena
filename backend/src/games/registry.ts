@@ -1,11 +1,13 @@
 import type { GameType } from '../types/game.js';
 import { ticTacToe } from './ticTacToe.js';
 import { memoryMatch } from './memoryMatch.js';
+import { iCallOn } from './iCallOn.js';
 import type { GameAdapter } from './types.js';
 
 const games: Record<GameType, GameAdapter> = {
   'tic-tac-toe': ticTacToe,
   'memory-match': memoryMatch,
+  'i-call-on': iCallOn,
 };
 
 export function getGame(type: GameType): GameAdapter {

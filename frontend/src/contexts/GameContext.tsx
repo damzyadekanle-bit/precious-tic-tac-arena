@@ -1,7 +1,7 @@
 import { createContext, useContext, useEffect, useState } from 'react';
 import toast from 'react-hot-toast';
 import { socket } from '../services/socket';
-import type { GameAction, GameType, PublicRoom } from '../types/game';
+import type { GameAction, GameType, ICallOnAction, PublicRoom } from '../types/game';
 import { getIdentity, updateNickname } from '../utils/identity';
 
 interface GameContextValue {
@@ -10,7 +10,7 @@ interface GameContextValue {
   connected: boolean;
   createRoom: (nickname: string, gameType: GameType) => Promise<string>;
   joinRoom: (code: string, nickname: string) => Promise<string>;
-  performAction: (action: GameAction) => void;
+  performAction: (action: GameAction | ICallOnAction) => void;
   requestRematch: () => void;
   leaveRoom: () => void;
 }
@@ -120,7 +120,7 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
         },
       );
     });
-  const performAction = (action: GameAction) => {
+  const performAction = (action: GameAction | ICallOnAction) => {
     if (!room) return;
     socket.emit(
       'game-action',

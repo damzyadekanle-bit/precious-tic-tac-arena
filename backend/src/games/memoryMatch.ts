@@ -20,6 +20,8 @@ function shuffledDeck(): string[] {
 
 export const memoryMatch: GameAdapter = {
   type: 'memory-match',
+  minPlayers: 2,
+  maxPlayers: 2,
   createInitialState(startingSeat: Seat = 0) {
     return {
       type: 'memory-match',

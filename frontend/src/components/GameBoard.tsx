@@ -12,6 +12,7 @@ export function GameBoard({
 }) {
   if (room.game.type === 'memory-match')
     return <MemoryBoard game={room.game} disabled={disabled} onMove={onMove} />;
+  if (room.game.type === 'i-call-on') return null;
   return (
     <motion.div
       initial={{ opacity: 0, scale: 0.96 }}

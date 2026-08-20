@@ -61,7 +61,9 @@ export function HomePage() {
               <button
                 key={type}
                 type="button"
-                onClick={() => setSelectedGame(type as GameType)}
+                onClick={() =>
+                  type === 'i-call-on' ? navigate('/i-call-on') : setSelectedGame(type as GameType)
+                }
                 className={`flex w-full max-w-md items-center gap-4 rounded-2xl border p-4 text-left transition ${selectedGame === type ? 'border-amber-300/70 bg-amber-300/10' : 'border-white/10 bg-white/5'}`}
               >
                 <span className="grid h-14 w-14 place-items-center rounded-xl bg-zinc-900 text-xl font-black text-amber-300">

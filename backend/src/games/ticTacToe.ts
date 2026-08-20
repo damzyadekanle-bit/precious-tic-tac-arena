@@ -19,6 +19,8 @@ function requireState(state: GameState): TicTacToeState {
 
 export const ticTacToe: GameAdapter = {
   type: 'tic-tac-toe',
+  minPlayers: 2,
+  maxPlayers: 2,
   createInitialState(startingSeat: Seat = 0) {
     return {
       type: 'tic-tac-toe',

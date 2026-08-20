@@ -1,6 +1,34 @@
-export type GameType = 'tic-tac-toe' | 'memory-match';
+export type GameType = 'tic-tac-toe' | 'memory-match' | 'i-call-on';
 export type GameStatus = 'waiting' | 'playing' | 'finished';
-export type Seat = 0 | 1;
+export type Seat = number;
+export type ICallOnCategory = 'name' | 'animal' | 'food' | 'place' | 'thing';
+export type ICallOnAnswers = Record<ICallOnCategory, string>;
+export type ICallOnPhase =
+  'LOBBY' | 'ROUND_SETUP' | 'PLAYING' | 'REVIEWING' | 'ROUND_RESULTS' | 'GAME_OVER';
+
+export interface ICallOnState {
+  type: 'i-call-on';
+  phase: ICallOnPhase;
+  hostSeat: Seat;
+  callerSeat: Seat;
+  round: number;
+  letter: string | null;
+  usedLetters: string[];
+  durationSeconds: number;
+  endsAt: number | null;
+  winner: null;
+  answers: Record<number, ICallOnAnswers>;
+  reviewerFor: Record<number, Seat>;
+  decisions: Record<number, Partial<Record<ICallOnCategory, boolean>>>;
+  roundPoints: Record<number, Record<ICallOnCategory, number>>;
+  totals: number[];
+}
+
+export interface PublicICallOnState extends Omit<ICallOnState, 'answers' | 'decisions'> {
+  myAnswers: ICallOnAnswers;
+  reviewTarget: { seat: Seat; answers: ICallOnAnswers } | null;
+  myDecisions: Partial<Record<ICallOnCategory, boolean>>;
+}
 
 export interface TicTacToeState {
   type: 'tic-tac-toe';
@@ -31,9 +59,20 @@ export interface PublicMemoryMatchState {
   pairScores: [number, number];
 }
 
-export type GameState = TicTacToeState | MemoryMatchState;
-export type PublicGameState = TicTacToeState | PublicMemoryMatchState;
-export type GameAction = { type: 'place'; index: number } | { type: 'flip'; index: number };
+export type GameState = TicTacToeState | MemoryMatchState | ICallOnState;
+export type PublicGameState = TicTacToeState | PublicMemoryMatchState | PublicICallOnState;
+export type GameAction =
+  | { type: 'place'; index: number }
+  | { type: 'flip'; index: number }
+  | { type: 'start-game' }
+  | { type: 'start-round'; letter: string; durationSeconds: number }
+  | { type: 'update-answers'; answers: ICallOnAnswers }
+  | { type: 'hands-up' }
+  | { type: 'review'; category: ICallOnCategory; correct: boolean }
+  | { type: 'next-round' }
+  | { type: 'end-game' }
+  | { type: 'play-again' }
+  | { type: 'expire-round' };
 
 export interface Player {
   id: string;
@@ -52,7 +91,7 @@ export interface Room {
   game: GameState;
   status: GameStatus;
   players: Player[];
-  scores: { wins: [number, number]; draws: number };
+  scores: { wins: number[]; draws: number };
   createdAt: number;
 }
 

@@ -25,7 +25,7 @@ export class RoomService {
           rematchRequested: false,
         },
       ],
-      scores: { wins: [0, 0], draws: 0 },
+      scores: { wins: Array(getGame(gameType).maxPlayers).fill(0), draws: 0 },
       createdAt: Date.now(),
     };
     this.rooms.set(code, room);
@@ -53,15 +53,18 @@ export class RoomService {
       returning.avatar = player.avatar;
       return room;
     }
-    if (room.players.length >= 2) throw new Error('Room is full');
+    if (room.game.type === 'i-call-on' && room.game.phase !== 'LOBBY')
+      throw new Error('This game has already started');
+    const adapter = getGame(room.gameType);
+    if (room.players.length >= adapter.maxPlayers) throw new Error('Room is full');
     room.players.push({
       ...player,
       reconnectToken: this.generateToken(),
-      seat: 1,
+      seat: room.players.length,
       connected: true,
       rematchRequested: false,
     });
-    room.status = 'playing';
+    if (!adapter.managesLobby && room.players.length >= adapter.minPlayers) room.status = 'playing';
     return room;
   }
 
@@ -77,11 +80,11 @@ export class RoomService {
     return undefined;
   }
 
-  publicRoom(room: Room): PublicRoom {
+  publicRoom(room: Room, viewerSeat?: number): PublicRoom {
     return {
       code: room.code,
       gameType: room.gameType,
-      game: getGame(room.gameType).toPublicState(room.game),
+      game: getGame(room.gameType).toPublicState(room.game, viewerSeat),
       status: room.status,
       players: room.players.map(({ id, nickname, avatar, seat, connected, rematchRequested }) => ({
         id,

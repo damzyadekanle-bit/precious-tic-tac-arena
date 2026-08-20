@@ -10,6 +10,7 @@ import { Scoreboard } from '../components/Scoreboard';
 import { GameOverModal } from '../components/GameOverModal';
 import { useSound } from '../hooks/useSound';
 import { gameCatalog } from '../types/game';
+import { ICallOnGame } from '../components/ICallOnGame';
 
 export function GamePage() {
   const { code = '' } = useParams();
@@ -24,7 +25,8 @@ export function GamePage() {
   }, []);
   const me = room?.players.find((p) => p.id === identity.playerId);
   const opponent = room?.players.find((p) => p.id !== identity.playerId);
-  const myTurn = room?.status === 'playing' && room.game.turn === me?.seat;
+  const myTurn =
+    room?.status === 'playing' && room.game.type !== 'i-call-on' && room.game.turn === me?.seat;
   const title = useMemo(() => {
     if (!connected) return 'Reconnecting...';
     if (!room) return 'Loading room...';
@@ -53,6 +55,21 @@ export function GamePage() {
         <div className="animate-pulse text-zinc-400">Connecting to room...</div>
       </main>
     );
+  if (room.game.type === 'i-call-on') {
+    const leaveICallOn = () => {
+      leaveRoom();
+      navigate('/');
+    };
+    return (
+      <ICallOnGame
+        room={{ ...room, game: room.game }}
+        me={me}
+        connected={connected}
+        performAction={performAction}
+        leave={leaveICallOn}
+      />
+    );
+  }
   const copyCode = async () => {
     await navigator.clipboard.writeText(room.code);
     toast.success('Room code copied');
@@ -159,8 +176,11 @@ export function GamePage() {
               <dt className="text-zinc-500">Current turn</dt>
               <dd>
                 {room.game.type === 'memory-match'
-                  ? (room.players.find((player) => player.seat === room.game.turn)?.nickname ?? '—')
-                  : room.game.turn === 0
+                  ? (room.players.find(
+                      (player) =>
+                        player.seat === (room.game.type === 'memory-match' ? room.game.turn : -1),
+                    )?.nickname ?? '—')
+                  : room.game.type === 'tic-tac-toe' && room.game.turn === 0
                     ? 'X'
                     : 'O'}
               </dd>
