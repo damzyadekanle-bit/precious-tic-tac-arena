@@ -59,6 +59,17 @@ export function registerGameSocket(io: Server, socket: Socket) {
         payload.gameType ?? 'tic-tac-toe',
       );
       socket.join(room.code);
+      if (room.game.type === 'draw-and-guess' && room.game.endsAt) {
+        const expectedEnd = room.game.endsAt;
+        setTimeout(() => {
+          const current = roomService.get(room.code);
+          if (!current || current.game.type !== 'draw-and-guess' || current.game.endsAt !== expectedEnd || current.game.winner !== null) return;
+          current.game = getGame(current.gameType).applyAction(current.game, -1, { type: 'expire-draw-round' });
+          current.status = 'finished';
+          current.scores.draws += 1;
+          broadcastRoom(io, current, 'game-over');
+        }, Math.max(0, expectedEnd - Date.now()));
+      }
       reply(callback, {
         ok: true,
         room: roomService.publicRoom(room, 0),
@@ -82,6 +93,17 @@ export function registerGameSocket(io: Server, socket: Socket) {
         payload.reconnectToken,
       );
       socket.join(room.code);
+      if (room.game.type === 'draw-and-guess' && room.game.endsAt) {
+        const expectedEnd = room.game.endsAt;
+        setTimeout(() => {
+          const current = roomService.get(room.code);
+          if (!current || current.game.type !== 'draw-and-guess' || current.game.endsAt !== expectedEnd || current.game.winner !== null) return;
+          current.game = getGame(current.gameType).applyAction(current.game, -1, { type: 'expire-draw-round' });
+          current.status = 'finished';
+          current.scores.draws += 1;
+          broadcastRoom(io, current, 'game-over');
+        }, Math.max(0, expectedEnd - Date.now()));
+      }
       broadcastRoom(io, room, 'player-joined');
       const player = room.players.find((candidate) => candidate.socketId === socket.id)!;
       reply(callback, {
@@ -150,6 +172,17 @@ export function registerGameSocket(io: Server, socket: Socket) {
           },
           Math.max(0, expectedEnd - Date.now()),
         );
+      }
+      if (room.gameType === 'draw-and-guess' && room.game.type === 'draw-and-guess' && room.game.endsAt) {
+        const expectedEnd = room.game.endsAt;
+        setTimeout(() => {
+          const current = roomService.get(room.code);
+          if (!current || current.game.type !== 'draw-and-guess' || current.game.endsAt !== expectedEnd || current.game.winner !== null) return;
+          current.game = getGame(current.gameType).applyAction(current.game, -1, { type: 'expire-draw-round' });
+          current.status = 'finished';
+          current.scores.draws += 1;
+          broadcastRoom(io, current, 'game-over');
+        }, Math.max(0, expectedEnd - Date.now()));
       }
       reply(callback, { ok: true });
     } catch (error) {

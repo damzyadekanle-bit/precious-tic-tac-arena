@@ -1,4 +1,4 @@
-export type GameType = 'tic-tac-toe' | 'memory-match' | 'i-call-on';
+export type GameType = 'tic-tac-toe' | 'memory-match' | 'i-call-on' | 'rock-paper-scissors' | 'draw-and-guess';
 export type GameStatus = 'waiting' | 'playing' | 'finished';
 export type Seat = number;
 export type ICallOnCategory = 'name' | 'animal' | 'food' | 'place' | 'thing';
@@ -49,6 +49,33 @@ export interface MemoryMatchState {
   pendingMismatch: boolean;
 }
 
+export type RpsChoice = 'rock' | 'paper' | 'scissors';
+export interface RockPaperScissorsState {
+  type: 'rock-paper-scissors';
+  choices: Array<RpsChoice | null>;
+  winner: Seat | 'draw' | null;
+}
+
+export interface DrawStroke {
+  x: number;
+  y: number;
+  toX: number;
+  toY: number;
+}
+export interface DrawAndGuessState {
+  type: 'draw-and-guess';
+  artistSeat: Seat;
+  prompt: string;
+  category: string;
+  strokes: DrawStroke[];
+  endsAt: number | null;
+  winner: Seat | 'draw' | null;
+}
+export interface PublicDrawAndGuessState extends Omit<DrawAndGuessState, 'prompt'> {
+  prompt: string | null;
+  wordLength: number;
+}
+
 export interface PublicMemoryMatchState {
   type: 'memory-match';
   cards: Array<string | null>;
@@ -59,8 +86,8 @@ export interface PublicMemoryMatchState {
   pairScores: [number, number];
 }
 
-export type GameState = TicTacToeState | MemoryMatchState | ICallOnState;
-export type PublicGameState = TicTacToeState | PublicMemoryMatchState | PublicICallOnState;
+export type GameState = TicTacToeState | MemoryMatchState | ICallOnState | RockPaperScissorsState | DrawAndGuessState;
+export type PublicGameState = TicTacToeState | PublicMemoryMatchState | PublicICallOnState | RockPaperScissorsState | PublicDrawAndGuessState;
 export type GameAction =
   | { type: 'place'; index: number }
   | { type: 'flip'; index: number }
@@ -72,7 +99,11 @@ export type GameAction =
   | { type: 'next-round' }
   | { type: 'end-game' }
   | { type: 'play-again' }
-  | { type: 'expire-round' };
+  | { type: 'expire-round' }
+  | { type: 'choose-rps'; choice: RpsChoice }
+  | { type: 'draw-stroke'; stroke: DrawStroke }
+  | { type: 'guess'; guess: string }
+  | { type: 'expire-draw-round' };
 
 export interface Player {
   id: string;
