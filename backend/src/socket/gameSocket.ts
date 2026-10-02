@@ -15,6 +15,11 @@ interface RoomPayload extends IdentityPayload {
   code: string;
   reconnectToken?: string;
 }
+interface VoiceSignalPayload {
+  code: string;
+  targetPlayerId: string;
+  signal: unknown;
+}
 type Ack = (response: {
   ok: boolean;
   room?: ReturnType<typeof roomService.publicRoom>;
@@ -68,6 +73,17 @@ function advanceDisconnectedCaller(room: NonNullable<ReturnType<typeof roomServi
 }
 
 export function registerGameSocket(io: Server, socket: Socket) {
+  socket.on('voice-signal', (payload: VoiceSignalPayload) => {
+    const room = roomService.get(payload.code);
+    if (!room || !payload.signal) return;
+    const sender = room.players.find((player) => player.socketId === socket.id && player.connected);
+    const target = room.players.find(
+      (player) => player.id === payload.targetPlayerId && player.connected,
+    );
+    if (!sender || !target || sender.id === target.id) return;
+    io.to(target.socketId).emit('voice-signal', { fromPlayerId: sender.id, signal: payload.signal });
+  });
+
   socket.on('create-room', (payload: CreateRoomPayload, callback) => {
     try {
       const room = roomService.createRoom(
@@ -115,6 +131,7 @@ export function registerGameSocket(io: Server, socket: Socket) {
       );
       socket.join(room.code);
       scheduleDrawRoundExpiry(io, room);
+      socket.to(room.code).emit('voice-peer-joined', { playerId: payload.playerId });
       broadcastRoom(io, room, 'player-joined');
       const player = room.players.find((candidate) => candidate.socketId === socket.id)!;
       reply(callback, {
@@ -234,6 +251,7 @@ export function registerGameSocket(io: Server, socket: Socket) {
     player.connected = false;
     player.rematchRequested = false;
     socket.leave(code);
+    socket.to(code).emit('voice-peer-left', { playerId: player.id });
     advanceDisconnectedCaller(room);
     broadcastRoom(io, room, 'player-left');
     setTimeout(() => roomService.deleteIfAbandoned(code), 30_000);
@@ -242,6 +260,8 @@ export function registerGameSocket(io: Server, socket: Socket) {
   socket.on('disconnect', () => {
     const room = roomService.removeSocket(socket.id);
     if (!room) return;
+    const player = room.players.find((candidate) => candidate.socketId === socket.id);
+    if (player) socket.to(room.code).emit('voice-peer-left', { playerId: player.id });
     advanceDisconnectedCaller(room);
     broadcastRoom(io, room, 'player-left');
     setTimeout(() => roomService.deleteIfAbandoned(room.code), 30_000);

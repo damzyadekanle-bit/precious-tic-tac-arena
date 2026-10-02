@@ -13,7 +13,7 @@ A real-time multiplayer game room built with React, TypeScript, Vite, Tailwind C
 - Session scoreboards, round results, and rematches
 - Reconnection-friendly player identities
 - Responsive 320px–1440px UI
-- Motion, confetti, synthesized sound effects, mute control
+- Motion, confetti, synthesized sound effects, mute control, and optional microphone voice chat
 - Accessible board buttons and live status messaging
 
 ## Local setup
@@ -65,3 +65,4 @@ All room access is isolated behind `RoomService`. Replace its internal `Map` wit
 - In-memory rooms reset whenever the backend restarts.
 - Multiple backend instances require Redis for shared rooms and Socket.IO pub/sub.
 - Add rate limiting, observability, persistent analytics, and automated tests before operating at scale.
+- Voice chat uses browser-to-browser WebRTC, with Socket.IO used only for private in-room setup messages. Microphone permission is requested only after a player presses the microphone button. The included public STUN service enables most direct connections; configure a TURN service for reliable voice chat across restrictive corporate networks and some mobile carriers.

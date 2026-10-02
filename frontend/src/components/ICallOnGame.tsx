@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Copy, LogOut, Megaphone, Share2 } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { VoiceChatControl } from './VoiceChatControl';
 import type {
   ICallOnAction,
   ICallOnAnswers,
@@ -320,13 +321,12 @@ function Shell({
           </p>
           <h1 className="text-2xl font-black">{title}</h1>
         </div>
-        <button
-          onClick={leave}
-          className="rounded-xl border border-white/10 p-3"
-          aria-label="Leave game"
-        >
-          <LogOut />
-        </button>
+        <div className="flex gap-2">
+          <VoiceChatControl />
+          <button onClick={leave} className="rounded-xl border border-white/10 p-3" aria-label="Leave game">
+            <LogOut />
+          </button>
+        </div>
       </header>
       {children}
       <p className="mt-6 text-center text-xs text-zinc-600">
