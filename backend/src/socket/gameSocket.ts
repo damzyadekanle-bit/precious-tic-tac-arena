@@ -35,6 +35,27 @@ function broadcastRoom(
     io.to(player.socketId).emit(event, roomService.publicRoom(room, player.seat));
 }
 
+function scheduleDrawRoundExpiry(io: Server, room: NonNullable<ReturnType<typeof roomService.get>>) {
+  if (room.game.type !== 'draw-and-guess' || !room.game.endsAt) return;
+  const expectedEnd = room.game.endsAt;
+  setTimeout(() => {
+    const current = roomService.get(room.code);
+    if (
+      !current ||
+      current.game.type !== 'draw-and-guess' ||
+      current.game.endsAt !== expectedEnd ||
+      current.game.winner !== null
+    )
+      return;
+    current.game = getGame(current.gameType).applyAction(current.game, -1, {
+      type: 'expire-draw-round',
+    });
+    current.status = 'finished';
+    current.scores.draws += 1;
+    broadcastRoom(io, current, 'game-over');
+  }, Math.max(0, expectedEnd - Date.now()));
+}
+
 function advanceDisconnectedCaller(room: NonNullable<ReturnType<typeof roomService.get>>) {
   if (room.game.type !== 'i-call-on' || room.game.phase !== 'ROUND_SETUP') return;
   const game = room.game;
@@ -93,17 +114,7 @@ export function registerGameSocket(io: Server, socket: Socket) {
         payload.reconnectToken,
       );
       socket.join(room.code);
-      if (room.game.type === 'draw-and-guess' && room.game.endsAt) {
-        const expectedEnd = room.game.endsAt;
-        setTimeout(() => {
-          const current = roomService.get(room.code);
-          if (!current || current.game.type !== 'draw-and-guess' || current.game.endsAt !== expectedEnd || current.game.winner !== null) return;
-          current.game = getGame(current.gameType).applyAction(current.game, -1, { type: 'expire-draw-round' });
-          current.status = 'finished';
-          current.scores.draws += 1;
-          broadcastRoom(io, current, 'game-over');
-        }, Math.max(0, expectedEnd - Date.now()));
-      }
+      scheduleDrawRoundExpiry(io, room);
       broadcastRoom(io, room, 'player-joined');
       const player = room.players.find((candidate) => candidate.socketId === socket.id)!;
       reply(callback, {
@@ -204,7 +215,9 @@ export function registerGameSocket(io: Server, socket: Socket) {
         const rounds = room.scores.wins[0] + room.scores.wins[1] + room.scores.draws;
         room.game = getGame(room.gameType).createInitialState(rounds % 2 === 0 ? 0 : 1);
         room.status = 'playing';
+        if (room.game.type === 'draw-and-guess') room.game.endsAt = Date.now() + 60_000;
         room.players.forEach((p) => (p.rematchRequested = false));
+        scheduleDrawRoundExpiry(io, room);
         broadcastRoom(io, room, 'accept-rematch');
       }
       reply(callback, { ok: true });
