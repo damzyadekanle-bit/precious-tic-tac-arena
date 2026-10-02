@@ -15,6 +15,11 @@ interface RoomPayload extends IdentityPayload {
   code: string;
   reconnectToken?: string;
 }
+interface VoiceSignalPayload {
+  code: string;
+  targetPlayerId: string;
+  signal: unknown;
+}
 type Ack = (response: {
   ok: boolean;
   room?: ReturnType<typeof roomService.publicRoom>;
@@ -35,6 +40,27 @@ function broadcastRoom(
     io.to(player.socketId).emit(event, roomService.publicRoom(room, player.seat));
 }
 
+function scheduleDrawRoundExpiry(io: Server, room: NonNullable<ReturnType<typeof roomService.get>>) {
+  if (room.game.type !== 'draw-and-guess' || !room.game.endsAt) return;
+  const expectedEnd = room.game.endsAt;
+  setTimeout(() => {
+    const current = roomService.get(room.code);
+    if (
+      !current ||
+      current.game.type !== 'draw-and-guess' ||
+      current.game.endsAt !== expectedEnd ||
+      current.game.winner !== null
+    )
+      return;
+    current.game = getGame(current.gameType).applyAction(current.game, -1, {
+      type: 'expire-draw-round',
+    });
+    current.status = 'finished';
+    current.scores.draws += 1;
+    broadcastRoom(io, current, 'game-over');
+  }, Math.max(0, expectedEnd - Date.now()));
+}
+
 function advanceDisconnectedCaller(room: NonNullable<ReturnType<typeof roomService.get>>) {
   if (room.game.type !== 'i-call-on' || room.game.phase !== 'ROUND_SETUP') return;
   const game = room.game;
@@ -47,6 +73,17 @@ function advanceDisconnectedCaller(room: NonNullable<ReturnType<typeof roomServi
 }
 
 export function registerGameSocket(io: Server, socket: Socket) {
+  socket.on('voice-signal', (payload: VoiceSignalPayload) => {
+    const room = roomService.get(payload.code);
+    if (!room || !payload.signal) return;
+    const sender = room.players.find((player) => player.socketId === socket.id && player.connected);
+    const target = room.players.find(
+      (player) => player.id === payload.targetPlayerId && player.connected,
+    );
+    if (!sender || !target || sender.id === target.id) return;
+    io.to(target.socketId).emit('voice-signal', { fromPlayerId: sender.id, signal: payload.signal });
+  });
+
   socket.on('create-room', (payload: CreateRoomPayload, callback) => {
     try {
       const room = roomService.createRoom(
@@ -82,6 +119,8 @@ export function registerGameSocket(io: Server, socket: Socket) {
         payload.reconnectToken,
       );
       socket.join(room.code);
+      scheduleDrawRoundExpiry(io, room);
+      socket.to(room.code).emit('voice-peer-joined', { playerId: payload.playerId });
       broadcastRoom(io, room, 'player-joined');
       const player = room.players.find((candidate) => candidate.socketId === socket.id)!;
       reply(callback, {
@@ -171,7 +210,9 @@ export function registerGameSocket(io: Server, socket: Socket) {
         const rounds = room.scores.wins[0] + room.scores.wins[1] + room.scores.draws;
         room.game = getGame(room.gameType).createInitialState(rounds % 2 === 0 ? 0 : 1);
         room.status = 'playing';
+        if (room.game.type === 'draw-and-guess') room.game.endsAt = Date.now() + 60_000;
         room.players.forEach((p) => (p.rematchRequested = false));
+        scheduleDrawRoundExpiry(io, room);
         broadcastRoom(io, room, 'accept-rematch');
       }
       reply(callback, { ok: true });
@@ -188,6 +229,7 @@ export function registerGameSocket(io: Server, socket: Socket) {
     player.connected = false;
     player.rematchRequested = false;
     socket.leave(code);
+    socket.to(code).emit('voice-peer-left', { playerId: player.id });
     advanceDisconnectedCaller(room);
     broadcastRoom(io, room, 'player-left');
     setTimeout(() => roomService.deleteIfAbandoned(code), 30_000);
@@ -196,6 +238,8 @@ export function registerGameSocket(io: Server, socket: Socket) {
   socket.on('disconnect', () => {
     const room = roomService.removeSocket(socket.id);
     if (!room) return;
+    const player = room.players.find((candidate) => candidate.socketId === socket.id);
+    if (player) socket.to(room.code).emit('voice-peer-left', { playerId: player.id });
     advanceDisconnectedCaller(room);
     broadcastRoom(io, room, 'player-left');
     setTimeout(() => roomService.deleteIfAbandoned(room.code), 30_000);
