@@ -1,4 +1,4 @@
-export type GameType = 'tic-tac-toe' | 'memory-match' | 'i-call-on';
+export type GameType = 'tic-tac-toe' | 'memory-match' | 'i-call-on' | 'rock-paper-scissors' | 'draw-and-guess';
 export type Seat = number;
 export type ICallOnCategory = 'name' | 'animal' | 'food' | 'place' | 'thing';
 export type ICallOnAnswers = Record<ICallOnCategory, string>;
@@ -35,8 +35,12 @@ export interface MemoryMatchState {
   winner: Seat | 'draw' | null;
   pairScores: [number, number];
 }
-export type GameState = TicTacToeState | MemoryMatchState | ICallOnState;
-export type GameAction = { type: 'place'; index: number } | { type: 'flip'; index: number };
+export type RpsChoice = 'rock' | 'paper' | 'scissors';
+export interface RockPaperScissorsState { type: 'rock-paper-scissors'; choices: Array<RpsChoice | null>; winner: Seat | 'draw' | null; }
+export interface DrawStroke { x: number; y: number; toX: number; toY: number; }
+export interface DrawAndGuessState { type: 'draw-and-guess'; artistSeat: Seat; prompt: string | null; category: string; strokes: DrawStroke[]; endsAt: number | null; winner: Seat | 'draw' | null; wordLength: number; }
+export type GameState = TicTacToeState | MemoryMatchState | ICallOnState | RockPaperScissorsState | DrawAndGuessState;
+export type GameAction = { type: 'place'; index: number } | { type: 'flip'; index: number } | { type: 'choose-rps'; choice: RpsChoice } | { type: 'draw-stroke'; stroke: DrawStroke } | { type: 'guess'; guess: string };
 export type ICallOnAction =
   | { type: 'start-game' }
   | { type: 'start-round'; letter: string; durationSeconds: number }
@@ -71,4 +75,6 @@ export const gameCatalog: Record<GameType, { name: string; description: string; 
     icon: '🃏',
   },
   'i-call-on': { name: 'I Call On', description: 'Race through five categories.', icon: '📣' },
+  'rock-paper-scissors': { name: 'Rock Paper Scissors', description: 'Choose in secret. Reveal together.', icon: '✊' },
+  'draw-and-guess': { name: 'Draw & Guess', description: 'Draw the secret prompt before time runs out.', icon: '🎨' },
 };

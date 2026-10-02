@@ -11,6 +11,8 @@ import { GameOverModal } from '../components/GameOverModal';
 import { useSound } from '../hooks/useSound';
 import { gameCatalog } from '../types/game';
 import { ICallOnGame } from '../components/ICallOnGame';
+import { RockPaperScissorsGame } from '../components/RockPaperScissorsGame';
+import { DrawAndGuessGame } from '../components/DrawAndGuessGame';
 
 export function GamePage() {
   const { code = '' } = useParams();
@@ -26,7 +28,9 @@ export function GamePage() {
   const me = room?.players.find((p) => p.id === identity.playerId);
   const opponent = room?.players.find((p) => p.id !== identity.playerId);
   const myTurn =
-    room?.status === 'playing' && room.game.type !== 'i-call-on' && room.game.turn === me?.seat;
+    room?.status === 'playing' &&
+    (room.game.type === 'tic-tac-toe' || room.game.type === 'memory-match') &&
+    room.game.turn === me?.seat;
   const title = useMemo(() => {
     if (!connected) return 'Reconnecting...';
     if (!room) return 'Loading room...';
@@ -68,6 +72,22 @@ export function GamePage() {
         performAction={performAction}
         leave={leaveICallOn}
       />
+    );
+  }
+  if (room.game.type === 'rock-paper-scissors') {
+    return (
+      <main className="relative z-10 mx-auto grid min-h-screen max-w-2xl place-items-center px-4 py-8">
+        <RockPaperScissorsGame game={room.game} me={me} onChoose={(choice) => performAction({ type: 'choose-rps', choice })} />
+        {room.status === 'finished' && <GameOverModal title={room.game.winner === 'draw' ? 'Draw game' : room.game.winner === me?.seat ? 'Victory!' : 'Defeat'} requested={Boolean(me?.rematchRequested)} onRematch={requestRematch} onLeave={() => { leaveRoom(); navigate('/'); }} />}
+      </main>
+    );
+  }
+  if (room.game.type === 'draw-and-guess') {
+    return (
+      <main className="relative z-10 mx-auto grid min-h-screen max-w-2xl place-items-center px-4 py-8">
+        <DrawAndGuessGame game={room.game} me={me} onAction={performAction} />
+        {room.status === 'finished' && <GameOverModal title={room.game.winner === 'draw' ? `Time! The word was ${room.game.prompt}` : room.game.winner === me?.seat ? 'Correct guess!' : `They guessed ${room.game.prompt}!`} requested={Boolean(me?.rematchRequested)} onRematch={requestRematch} onLeave={() => { leaveRoom(); navigate('/'); }} />}
+      </main>
     );
   }
   const copyCode = async () => {
