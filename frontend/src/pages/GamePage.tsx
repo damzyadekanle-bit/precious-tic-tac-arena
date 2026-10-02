@@ -11,6 +11,8 @@ import { GameOverModal } from '../components/GameOverModal';
 import { useSound } from '../hooks/useSound';
 import { gameCatalog } from '../types/game';
 import { ICallOnGame } from '../components/ICallOnGame';
+import { RockPaperScissorsGame } from '../components/RockPaperScissorsGame';
+import { DrawAndGuessGame } from '../components/DrawAndGuessGame';
 
 export function GamePage() {
   const { code = '' } = useParams();
@@ -26,7 +28,9 @@ export function GamePage() {
   const me = room?.players.find((p) => p.id === identity.playerId);
   const opponent = room?.players.find((p) => p.id !== identity.playerId);
   const myTurn =
-    room?.status === 'playing' && room.game.type !== 'i-call-on' && room.game.turn === me?.seat;
+    room?.status === 'playing' &&
+    (room.game.type === 'tic-tac-toe' || room.game.type === 'memory-match') &&
+    room.game.turn === me?.seat;
   const title = useMemo(() => {
     if (!connected) return 'Reconnecting...';
     if (!room) return 'Loading room...';
@@ -68,6 +72,24 @@ export function GamePage() {
         performAction={performAction}
         leave={leaveICallOn}
       />
+    );
+  }
+  if (room.game.type === 'rock-paper-scissors') {
+    return (
+      <main className="relative z-10 mx-auto min-h-screen max-w-2xl px-4 py-8">
+        <RoomInvite code={room.code} gameName={gameCatalog[room.gameType].name} waiting={room.status === 'waiting'} />
+        <div className="mt-10 grid place-items-center"><RockPaperScissorsGame game={room.game} me={me} disabled={room.status !== 'playing'} onChoose={(choice) => performAction({ type: 'choose-rps', choice })} /></div>
+        {room.status === 'finished' && <GameOverModal title={room.game.winner === 'draw' ? 'Draw game' : room.game.winner === me?.seat ? 'Victory!' : 'Defeat'} requested={Boolean(me?.rematchRequested)} onRematch={requestRematch} onLeave={() => { leaveRoom(); navigate('/'); }} />}
+      </main>
+    );
+  }
+  if (room.game.type === 'draw-and-guess') {
+    return (
+      <main className="relative z-10 mx-auto min-h-screen max-w-2xl px-4 py-8">
+        <RoomInvite code={room.code} gameName={gameCatalog[room.gameType].name} waiting={room.status === 'waiting'} />
+        <div className="mt-10 grid place-items-center"><DrawAndGuessGame game={room.game} me={me} disabled={room.status !== 'playing'} onAction={performAction} /></div>
+        {room.status === 'finished' && <GameOverModal title={room.game.winner === 'draw' ? `Time! The word was ${room.game.prompt}` : room.game.winner === me?.seat ? 'Correct guess!' : `They guessed ${room.game.prompt}!`} requested={Boolean(me?.rematchRequested)} onRematch={requestRematch} onLeave={() => { leaveRoom(); navigate('/'); }} />}
+      </main>
     );
   }
   const copyCode = async () => {
@@ -204,5 +226,22 @@ export function GamePage() {
         />
       )}
     </main>
+  );
+}
+
+function RoomInvite({ code, gameName, waiting }: { code: string; gameName: string; waiting: boolean }) {
+  const copyCode = async () => {
+    await navigator.clipboard.writeText(code);
+    toast.success('Room code copied');
+  };
+  return (
+    <header className="rounded-2xl border border-white/10 bg-white/5 p-5 text-center">
+      <p className="text-sm font-semibold text-amber-300">{gameName} · Room code</p>
+      <div className="mt-2 flex items-center justify-center gap-3">
+        <strong className="text-3xl tracking-[.2em]">{code}</strong>
+        <button type="button" onClick={copyCode} className="rounded-xl border border-white/10 p-2 hover:bg-white/10" aria-label="Copy room code"><Copy size={18} /></button>
+      </div>
+      {waiting && <p className="mt-3 text-sm text-zinc-400">Send this code to a friend. The game starts when they join.</p>}
+    </header>
   );
 }

@@ -64,7 +64,10 @@ export class RoomService {
       connected: true,
       rematchRequested: false,
     });
-    if (!adapter.managesLobby && room.players.length >= adapter.minPlayers) room.status = 'playing';
+    if (!adapter.managesLobby && room.players.length >= adapter.minPlayers) {
+      room.status = 'playing';
+      if (room.game.type === 'draw-and-guess') room.game.endsAt = Date.now() + 60_000;
+    }
     return room;
   }
 
